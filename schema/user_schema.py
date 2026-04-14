@@ -3,7 +3,7 @@ from typing import Optional
 
 
 class UserSchema(BaseModel):
-    id: Optional[str] 
+    id: Optional[str] = None
     nombre: str
     email: str
     password: str
