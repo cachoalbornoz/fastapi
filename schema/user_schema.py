@@ -10,6 +10,8 @@ class UserSchema(BaseModel):
     password: str
     email_verified_at: Optional[datetime] = None
     remember_token: Optional[str] = None
+    ip_acceso: Optional[str] = None
+    user_agent: Optional[str] = None
     ultimo_login_new: Optional[datetime] = None
     ultimo_cambio_password: Optional[datetime] = None
     created_at: Optional[datetime] = None
