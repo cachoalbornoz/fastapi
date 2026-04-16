@@ -7,9 +7,9 @@ from starlette.status import (
     HTTP_200_OK,
     HTTP_404_NOT_FOUND,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from typing import List
-from schema.user_schema import UserSchema
+from schema.user_schema import UserSchema, UserUpdateSchema
 from model.user import users
 from config.db import engine
 import bcrypt
@@ -22,7 +22,6 @@ router = APIRouter()
 @router.get("/")
 def root():
     return {"message": "Hello I am the root of the API"}
-
 
 @router.post("/api/user")
 def create_user(data_user: UserSchema):
@@ -69,7 +68,6 @@ def create_user(data_user: UserSchema):
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "Error creating user", "error": str(e)},
         )
-
 
 @router.get("/api/user/{id}", response_model=UserSchema)
 def get_user(id: int):
@@ -119,4 +117,82 @@ def get_users():
         return JSONResponse(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "Error getting users", "error": str(e)},
+        )
+
+
+@router.put("/api/user/{id}")
+def update_user(id: int, data_user: UserUpdateSchema):
+    try:
+        with engine.connect() as conn:
+            # Check if user exists
+            stmt = select(users).where(users.c.id == id)
+            result = conn.execute(stmt).fetchone()
+            if result is None:
+                return JSONResponse(
+                    status_code=HTTP_404_NOT_FOUND,
+                    content={"detail": "User not found"},
+                )
+
+            # Prepare update data
+            update_data = {}
+
+            if data_user.nombre is not None:
+                update_data["nombre"] = data_user.nombre
+            
+            if data_user.email is not None:
+                update_data["email"] = data_user.email
+
+            # Only update password if it's provided
+            if data_user.password:
+                update_data["password"] = bcrypt.hashpw(
+                    data_user.password.encode("utf-8"),
+                    bcrypt.gensalt(rounds=BCRYPT_ROUNDS),
+                ).decode("utf-8")
+
+            # Update other optional fields
+            for key in (
+                "email_verified_at",
+                "remember_token",
+                "ip_acceso",
+                "user_agent",
+                "ultimo_login_new",
+                "ultimo_cambio_password",
+                "ultimo_login",
+            ):
+                value = getattr(data_user, key, None)
+                if value is not None:
+                    update_data[key] = value
+
+            # If no data to update, return success or early exit
+            if not update_data:
+                return JSONResponse(
+                    status_code=HTTP_200_OK,
+                    content={"message": "No changes provided"},
+                )
+
+            # server_onupdate en el modelo no siempre aplica en MySQL; fijar en cada UPDATE
+            update_data["updated_at"] = func.now()
+
+            # Execute update
+            conn.execute(
+                users.update().where(users.c.id == id).values(update_data)
+            )
+            conn.commit()
+
+        return JSONResponse(
+            status_code=HTTP_200_OK,
+            content={
+                "message": "User updated successfully",
+                "user": {
+                    "id": id,
+                    "nombre": data_user.nombre if data_user.nombre else result._mapping["nombre"],
+                    "email": data_user.email if data_user.email else result._mapping["email"],
+                },
+            },
+        )
+    except Exception as e:
+        print(e)
+        return JSONResponse(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "Error updating user", "error": str(e)},
         )
