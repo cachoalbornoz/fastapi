@@ -23,6 +23,37 @@ router = APIRouter()
 def root():
     return {"message": "Hello I am the root of the API"}
 
+@router.get("/api/users", response_model=List[UserSchema])
+def get_users():
+    try:
+        with engine.connect() as conn:
+            stmt = select(
+                users.c.id,
+                users.c.nombre,
+                users.c.email,
+                users.c.ultimo_login,
+                users.c.ip_acceso,
+                users.c.user_agent,
+                users.c.created_at,
+                users.c.updated_at,
+            ).order_by(
+                users.c.nombre.asc(),        # 1er criterio
+                users.c.created_at.desc(),   # 2do criterio
+            )
+
+            result = conn.execute(stmt).fetchall()
+            user_list = [dict(row._mapping) for row in result]
+            return JSONResponse(
+                status_code=HTTP_200_OK,
+                content={"users": jsonable_encoder(user_list)},
+            )
+    except Exception as e:
+        print(e)
+        return JSONResponse(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "Error getting users", "error": str(e)},
+        )
+
 @router.post("/api/user")
 def create_user(data_user: UserSchema):
     try:
@@ -91,34 +122,6 @@ def get_user(id: int):
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "Error getting user", "error": str(e)},
         )
-
-@router.get("/api/users", response_model=List[UserSchema])
-def get_users():
-    try:
-        with engine.connect() as conn:
-            stmt = select(
-                users.c.id,
-                users.c.nombre,
-                users.c.email,
-                users.c.ultimo_login,
-                users.c.ip_acceso,
-                users.c.user_agent,
-                users.c.created_at,
-                users.c.updated_at,
-            )
-            result = conn.execute(stmt).fetchall()
-            user_list = [dict(row._mapping) for row in result]
-            return JSONResponse(
-                status_code=HTTP_200_OK,
-                content={"users": jsonable_encoder(user_list)},
-            )
-    except Exception as e:
-        print(e)
-        return JSONResponse(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": "Error getting users", "error": str(e)},
-        )
-
 
 @router.put("/api/user/{id}")
 def update_user(id: int, data_user: UserUpdateSchema):
@@ -195,4 +198,21 @@ def update_user(id: int, data_user: UserUpdateSchema):
         return JSONResponse(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "Error updating user", "error": str(e)},
+        )
+
+@router.delete("/api/user/{id}")
+def delete_user(id: int):
+    try:
+        with engine.connect() as conn:
+            conn.execute(users.delete().where(users.c.id == id))
+            conn.commit()
+        return JSONResponse(
+            status_code=HTTP_200_OK,
+            content={"message": "User deleted successfully"},
+        )
+    except Exception as e:
+        print(e)
+        return JSONResponse(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "Error deleting user", "error": str(e)},
         )
